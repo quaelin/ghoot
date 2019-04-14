@@ -1,0 +1,32 @@
+{
+  "name": "ghoot",
+  "description": "Visualization of github org evolution over time",
+  "version": "0.0.1",
+  "author": "Chris Campbell",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/quaelin/ghoot"
+  },
+  "engines": {
+    "node": ">= 8"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "@octokit/rest": "^16.24.1",
+    "minimist": "^1.2.0"
+  },
+  "devDependencies": {
+    "@change-org/eslint-plugin-change": "^1.1.0",
+    "eslint": "^5.16.0",
+    "eslint-config-change-base": "^8.0.0",
+    "eslint-plugin-import": "^2.17.1",
+    "eslint-plugin-lodash": "^5.1.0",
+    "eslint-plugin-promise": "^4.1.1",
+    "eslint-plugin-security": "^1.4.0"
+  },
+  "scripts": {
+    "lint": "eslint . --cache",
+    "pretest": "npm run lint"
+  }
+}
