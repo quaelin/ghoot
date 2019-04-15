@@ -7,7 +7,9 @@ function dump(...msg) {
   console.log(...msg);
 }
 function debug(...msg) {
-  // console.log('[ghoot:debug]', ...msg);
+  if (args.debug) {
+    console.log('[ghoot:debug]', ...msg);
+  }
 }
 function error(...msg) {
   console.error('[ghoot:error]', ...msg);
@@ -21,7 +23,7 @@ const run = async () => {
     debug,
     error,
   })
-    .then(dump)
+    .then(stats => dump(JSON.stringify(stats, null, 3)))
     .catch(error);
 };
 
