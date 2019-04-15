@@ -7,7 +7,7 @@ function dump(...msg) {
   console.log(...msg);
 }
 function debug(...msg) {
-  console.log('[ghoot:debug]', ...msg);
+  // console.log('[ghoot:debug]', ...msg);
 }
 function error(...msg) {
   console.error('[ghoot:error]', ...msg);
