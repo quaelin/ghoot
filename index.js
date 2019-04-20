@@ -1,6 +1,9 @@
-const args = require('./lib/parse_args')(process);
+const parseArgs = require('./lib/parse_args');
 const processOrg = require('./lib/process_org');
 const mkTmpDir = require('./lib/mk_tmp_dir');
+
+const usage = 'Usage: ghoot <org> --name=<user> --token=<github_token> [--tmp=<tmpdir>]';
+let args;
 
 /* eslint-disable no-console */
 function dump(...msg) {
@@ -17,14 +20,18 @@ function error(...msg) {
 /* eslint-enable no-console */
 
 const run = async () => {
+  args = await parseArgs(process).catch(() => {
+    dump(usage);
+    process.exit(1);
+  });
+
   processOrg({
-    tempDir: await mkTmpDir(),
+    dir: args.dir || await mkTmpDir(args.tmp),
     ...args,
+    dump,
     debug,
     error,
-  })
-    .then(stats => dump(JSON.stringify(stats, null, 3)))
-    .catch(error);
+  }).catch(error);
 };
 
 run();
