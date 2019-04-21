@@ -44,6 +44,71 @@ const reshapeData = (data, langs) => {
   };
 };
 
+const createXAxis = (data) => {
+  const xScaler = d3.scaleTime()
+    .domain(d3.extent(data, d => d.dateObj))
+    .range([0, width]);
+  const xAxis = svg.append('g')
+    .attr('transform', `translate(0,${height})`)
+    .call(d3.axisBottom(xScaler));
+  const xLabel = svg.append('text')
+    .attr('text-anchor', 'end')
+    .attr('x', width)
+    .attr('y', height + 40)
+    .text('Date');
+  return { xAxis, xScaler, xLabel };
+};
+
+const createYAxis = (maxTotalLines) => {
+  const yScaler = d3.scaleLinear()
+    .domain([0, maxTotalLines])
+    .range([height, 0]);
+  const yAxis = svg.append('g')
+    .call(d3.axisLeft(yScaler));
+  const yLabel = svg.append('text')
+    .attr('text-anchor', 'end')
+    .attr('x', 0)
+    .attr('y', -20)
+    .text('Lines of code')
+    .attr('text-anchor', 'start');
+  return { yAxis, yScaler, yLabel };
+};
+
+const highlight = (d) => {
+  d3.selectAll('.langArea').style('opacity', 0.1);
+  d3.select(`.langArea-${d}`).style('opacity', 1);
+};
+
+const noHighLight = () => d3.selectAll('.langArea').style('opacity', 1);
+
+const createLegend = (langs, color) => {
+  const dotSize = 20;
+  const legendX = 730;
+  svg.selectAll('myrect')
+    .data(langs)
+    .enter()
+    .append('rect')
+    .attr('x', legendX)
+    .attr('y', (d, i) => 10 + (i * (dotSize + 5)))
+    .attr('width', dotSize)
+    .attr('height', dotSize)
+    .style('fill', (d, i) => color(i))
+    .on('mouseover', highlight)
+    .on('mouseout', noHighLight);
+  svg.selectAll('mylabels')
+    .data(langs)
+    .enter()
+    .append('text')
+    .attr('x', legendX + (dotSize * 1.2))
+    .attr('y', (d, i) => 10 + (i * (dotSize + 5)) + (dotSize / 2))
+    .style('fill', (d, i) => color(i))
+    .text(d => d)
+    .attr('text-anchor', 'left')
+    .style('alignment-baseline', 'middle')
+    .on('mouseover', highlight)
+    .on('mouseout', noHighLight);
+};
+
 d3.csv(
   // Input records are in this format:
   // { repo, date, language, files, lines }
@@ -57,47 +122,24 @@ d3.csv(
     lines: Number(r.lines),
   }),
 
-  (data) => { // eslint-disable-line max-statements
+  (data) => {
     // Find the top-10 languages by total line count
     const langs = getTopLangs(data);
     const langIndices = _.map(langs, (lang, idx) => idx);
 
     // Reshape the data for a stacked area chart, highlighing just the top languages
     const { stackedData, maxTotalLines } = reshapeData(data, langs);
-    console.log(stackedData);
 
     const color = d3.scaleOrdinal()
       .domain(langIndices)
       .range(d3.schemePaired);
 
-    // Add X axis
-    const xScaler = d3.scaleTime()
-      .domain(d3.extent(data, d => d.dateObj))
-      .range([0, width]);
-    const xAxis = svg.append('g')
-      .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(xScaler));
-    svg.append('text')
-      .attr('text-anchor', 'end')
-      .attr('x', width)
-      .attr('y', height + 40)
-      .text('Date');
-
-    // Add Y axis
-    const yScaler = d3.scaleLinear()
-      .domain([0, maxTotalLines])
-      .range([height, 0]);
-    const yAxis = svg.append('g')
-      .call(d3.axisLeft(yScaler));
-    svg.append('text')
-      .attr('text-anchor', 'end')
-      .attr('x', 0)
-      .attr('y', -20)
-      .text('Lines of code')
-      .attr('text-anchor', 'start');
+    // Add axes
+    const { xAxis, xScaler } = createXAxis(data);
+    const { yScaler } = createYAxis(maxTotalLines);
 
     // Add a clipPath: everything out of this area won't be drawn.
-    const clip = svg.append('defs').append('svg:clipPath')
+    svg.append('defs').append('svg:clipPath')
       .attr('id', 'clip')
       .append('svg:rect')
       .attr('width', width)
@@ -105,15 +147,8 @@ d3.csv(
       .attr('x', 0)
       .attr('y', 0);
 
-    // Add brushing
-    let updateChart; // defined below
-    const brush = d3.brushX() // Add the brush feature using the d3.brush function
-      .extent([[0, 0], [width, height]]) // brush area: it means I select the whole graph area
-      .on('end', updateChart); // Each time the brush selection changes, trigger the 'updateChart' function
-
     // Create the scatter variable: where both the circles and the brush take place
-    const areaChart = svg.append('g')
-      .attr('clip-path', 'url(#clip)');
+    const areaChart = svg.append('g').attr('clip-path', 'url(#clip)');
 
     // Area generator
     const area = d3.area()
@@ -121,23 +156,11 @@ d3.csv(
       .y0(d => yScaler(d[0]))
       .y1(d => yScaler(d[1]));
 
-    areaChart.selectAll('mylayers')
-      .data(stackedData)
-      .enter()
-      .append('path')
-      .attr('class', d => `langArea langArea-${d.key}`)
-      .style('fill', d => color(d.index))
-      .attr('d', area);
-
-    // Add the brushing
-    areaChart.append('g')
-      .attr('class', 'brush')
-      .call(brush);
-
+    let brush;
     let idleTimeout;
     const idled = () => { idleTimeout = null; };
 
-    updateChart = () => {
+    const updateChart = () => {
       const extent = d3.event.selection;
 
       // If no selection, back to initial coordinate. Otherwise, update X axis domain
@@ -159,37 +182,25 @@ d3.csv(
         .attr('d', area);
     };
 
-    const highlight = (d) => {
-      d3.selectAll('.langArea').style('opacity', 0.1);
-      d3.select(`.langArea-${d}`).style('opacity', 1);
-    };
-    const noHighLight = () => d3.selectAll('.langArea').style('opacity', 1);
+    // Add brushing
+    brush = d3.brushX() // Add the brush feature using the d3.brush function
+      .extent([[0, 0], [width, height]]) // brush area: it means I select the whole graph area
+      .on('end', updateChart); // Each time the brush selection changes, trigger the 'updateChart' function
+
+    areaChart.selectAll('mylayers')
+      .data(stackedData)
+      .enter()
+      .append('path')
+      .attr('class', d => `langArea langArea-${d.key}`)
+      .style('fill', d => color(d.index))
+      .attr('d', area);
+
+    // Add the brushing
+    areaChart.append('g')
+      .attr('class', 'brush')
+      .call(brush);
 
     // Legend
-    const dotSize = 20;
-    const legendX = 730;
-    svg.selectAll('myrect')
-      .data(langs)
-      .enter()
-      .append('rect')
-      .attr('x', legendX)
-      .attr('y', (d, i) => 10 + (i * (dotSize + 5)))
-      .attr('width', dotSize)
-      .attr('height', dotSize)
-      .style('fill', (d, i) => color(i))
-      .on('mouseover', highlight)
-      .on('mouseout', noHighLight);
-    svg.selectAll('mylabels')
-      .data(langs)
-      .enter()
-      .append('text')
-      .attr('x', legendX + (dotSize * 1.2))
-      .attr('y', (d, i) => 10 + (i * (dotSize + 5)) + (dotSize / 2))
-      .style('fill', (d, i) => color(i))
-      .text(d => d)
-      .attr('text-anchor', 'left')
-      .style('alignment-baseline', 'middle')
-      .on('mouseover', highlight)
-      .on('mouseout', noHighLight);
+    createLegend(langs, color);
   }
 );
