@@ -74,9 +74,11 @@ const createYAxis = (maxTotalLines) => {
   return { yAxis, yScaler, yLabel };
 };
 
+const cssSafe = str => str.replace(/ /g, '-');
+
 const highlight = (d) => {
   d3.selectAll('.langArea').style('opacity', 0.1);
-  d3.select(`.langArea-${d}`).style('opacity', 1);
+  d3.select(`.langArea-${cssSafe(d)}`).style('opacity', 1);
 };
 
 const noHighLight = () => d3.selectAll('.langArea').style('opacity', 1);
@@ -191,7 +193,7 @@ d3.csv(
       .data(stackedData)
       .enter()
       .append('path')
-      .attr('class', d => `langArea langArea-${d.key}`)
+      .attr('class', d => `langArea langArea-${cssSafe(d.key)}`)
       .style('fill', d => color(d.index))
       .attr('d', area);
 
