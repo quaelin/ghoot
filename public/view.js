@@ -1,21 +1,42 @@
-/* global _, d3 */
-const margin = {
-  top: 75,
-  right: 230,
-  bottom: 50,
-  left: 75,
+/* global _, $, d3 */
+
+const prefs = {
+  groupBy: 'language', // either 'language' or 'repo'
+  colors: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a', '#888888'],
+  language: {
+    'Comma Separated Values': false,
+    'Tab Separated Values': false,
+    Text: false,
+  },
+  repo: {
+  },
 };
-const width = 1000 - margin.left - margin.right;
-const height = 500 - margin.top - margin.bottom;
 
-const svg = d3.select('#dataviz')
-  .append('svg')
-  .attr('width', width + margin.left + margin.right)
-  .attr('height', height + margin.top + margin.bottom)
-  .append('g')
-  .attr('transform', `translate(${margin.left},${margin.top})`);
+const importCSVData = () => new Promise((resolve) => { // eslint-disable-line promise/avoid-new
+  d3.csv(
+    // Input records are in this format:
+    // { repo, date, language, files, lines }
+    'data.csv',
 
-// Find the top 10 languages by total line count, and group everything else as 'Other'
+    // Format each record's date and numbers
+    r => ({
+      ...r,
+      dateObj: d3.timeParse('%Y-%m-%d')(r.date),
+      files: Number(r.files),
+      lines: Number(r.lines),
+    }),
+
+    resolve
+  );
+});
+
+const filterByPrefs = data => (_.filter(data, r => (
+  prefs.language[r.language] !== false
+    && prefs.repo[r.repo] !== false
+)));
+
+// Find the top 10 languages by total line count (ignoring any languages that have been disabled in
+// the prefs) and group everything else as 'Other'.
 const getTopLangs = data => ([
   ..._.map(_.slice(_.reverse(_.sortBy(
     _.flatMap(
@@ -27,39 +48,77 @@ const getTopLangs = data => ([
   'Other',
 ]);
 
-const reshapeData = (data, langs) => {
+// Find the top 10 repos by total line count, and group everything else as 'Other'
+const getTopRepos = data => ([
+  ..._.map(_.slice(_.reverse(_.sortBy(
+    _.flatMap(
+      _.groupBy(data, 'repo'),
+      (recsByRepo, repo) => ({ repo, totalLines: _.sumBy(recsByRepo, 'lines') })
+    ),
+    'totalLines'
+  )), 0, 10), 'repo'),
+  'Other',
+]);
+
+const getTopGroups = data => (prefs.groupBy === 'language' ? getTopLangs(data) : getTopRepos(data));
+
+const stackDataByGroup = (data, groups) => {
   const recordsByDate = _.groupBy(data, 'date');
-  const groupedByDateAndLanguage = _.flatMap(recordsByDate, (recsByDate, date) => ({
+  const recordsByDateAndGroup = _.flatMap(recordsByDate, (recsByDate, date) => ({
     date,
     dateObj: recsByDate[0].dateObj,
-    ..._.zipObject(langs, _.range(0, langs.length, 0)),
+    ..._.zipObject(groups, _.range(0, groups.length, 0)),
     ..._.mapValues(
-      _.groupBy(recsByDate, rec => (_.includes(langs, rec.language) ? rec.language : 'Other')),
+      _.groupBy(recsByDate, rec => (
+        _.includes(groups, rec[prefs.groupBy]) ? rec[prefs.groupBy] : 'Other'
+      )),
       recsByLang => _.sumBy(recsByLang, 'lines')
     ),
   }));
   return {
-    stackedData: d3.stack().keys(langs)(groupedByDateAndLanguage),
+    stackedData: d3.stack().keys(groups)(recordsByDateAndGroup),
     maxTotalLines: _.max(_.values(_.mapValues(recordsByDate, recs => (_.sumBy(recs, 'lines'))))),
   };
 };
 
-const createXAxis = (data) => {
+const getDimensions = () => {
+  const margin = {
+    top: 75,
+    right: 230,
+    bottom: 50,
+    left: 75,
+  };
+  const width = 1000 - margin.left - margin.right;
+  const height = 500 - margin.top - margin.bottom;
+  return { height, margin, width };
+};
+
+const emptyChartSvg = ({ height, margin, width }) => {
+  $('#dataviz').empty();
+  return d3.select('#dataviz')
+    .append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+};
+
+const createXAxis = ({ data, dimensions, svg }) => {
   const xScaler = d3.scaleTime()
     .domain(d3.extent(data, d => d.dateObj))
-    .range([0, width]);
+    .range([0, dimensions.width]);
   const xAxis = svg.append('g')
-    .attr('transform', `translate(0,${height})`)
+    .attr('transform', `translate(0,${dimensions.height})`)
     .call(d3.axisBottom(xScaler));
   const xLabel = svg.append('text')
     .attr('text-anchor', 'end')
-    .attr('x', width)
-    .attr('y', height + 40)
+    .attr('x', dimensions.width)
+    .attr('y', dimensions.height + 40)
     .text('Date');
   return { xAxis, xScaler, xLabel };
 };
 
-const createYAxis = (maxTotalLines) => {
+const createYAxis = ({ height, maxTotalLines, svg }) => {
   const yScaler = d3.scaleLinear()
     .domain([0, maxTotalLines])
     .range([height, 0]);
@@ -74,6 +133,17 @@ const createYAxis = (maxTotalLines) => {
   return { yAxis, yScaler, yLabel };
 };
 
+// Add a clipPath: everything out of this area won't be drawn.
+const addClipPath = ({ height, svg, width }) => {
+  svg.append('defs').append('svg:clipPath')
+    .attr('id', 'clip')
+    .append('svg:rect')
+    .attr('width', width)
+    .attr('height', height)
+    .attr('x', 0)
+    .attr('y', 0);
+};
+
 const cssSafe = str => str.replace(/ /g, '-');
 
 const highlight = (d) => {
@@ -83,11 +153,11 @@ const highlight = (d) => {
 
 const noHighLight = () => d3.selectAll('.langArea').style('opacity', 1);
 
-const createLegend = (langs, color) => {
+const createLegend = ({ color, groups, svg }) => {
   const dotSize = 20;
   const legendX = 730;
   svg.selectAll('myrect')
-    .data(langs)
+    .data(groups)
     .enter()
     .append('rect')
     .attr('x', legendX)
@@ -98,7 +168,7 @@ const createLegend = (langs, color) => {
     .on('mouseover', highlight)
     .on('mouseout', noHighLight);
   svg.selectAll('mylabels')
-    .data(langs)
+    .data(groups)
     .enter()
     .append('text')
     .attr('x', legendX + (dotSize * 1.2))
@@ -111,98 +181,79 @@ const createLegend = (langs, color) => {
     .on('mouseout', noHighLight);
 };
 
-d3.csv(
-  // Input records are in this format:
-  // { repo, date, language, files, lines }
-  'data.csv',
+const render = (allData) => { // eslint-disable-line max-statements
+  // Filter, group and stack the data
+  const data = filterByPrefs(allData);
+  const groups = getTopGroups(data);
+  const groupIndices = _.map(groups, (group, idx) => idx);
+  const { stackedData, maxTotalLines } = stackDataByGroup(data, groups);
 
-  // Format each record
-  r => ({
-    ...r,
-    dateObj: d3.timeParse('%Y-%m-%d')(r.date),
-    files: Number(r.files),
-    lines: Number(r.lines),
-  }),
+  const dimensions = getDimensions();
+  const { height, width } = dimensions;
+  const svg = emptyChartSvg(dimensions);
+  const color = d3.scaleOrdinal()
+    .domain(groupIndices)
+    .range(prefs.colors);
+  const { xAxis, xScaler } = createXAxis({ data, dimensions, svg });
+  const { yScaler } = createYAxis({ height, maxTotalLines, svg });
+  addClipPath({ height, svg, width });
 
-  (data) => {
-    // Find the top-10 languages by total line count
-    const langs = getTopLangs(data);
-    const langIndices = _.map(langs, (lang, idx) => idx);
+  // Create the scatter variable: where both the circles and the brush take place
+  const areaChart = svg.append('g').attr('clip-path', 'url(#clip)');
 
-    // Reshape the data for a stacked area chart, highlighing just the top languages
-    const { stackedData, maxTotalLines } = reshapeData(data, langs);
+  // Area generator
+  const area = d3.area()
+    .x(d => xScaler(d.data.dateObj))
+    .y0(d => yScaler(d[0]))
+    .y1(d => yScaler(d[1]));
 
-    const color = d3.scaleOrdinal()
-      .domain(langIndices)
-      .range(d3.schemePaired);
+  let brush;
+  let idleTimeout;
+  const idled = () => { idleTimeout = null; };
 
-    // Add axes
-    const { xAxis, xScaler } = createXAxis(data);
-    const { yScaler } = createYAxis(maxTotalLines);
+  const updateChart = () => {
+    const extent = d3.event.selection;
 
-    // Add a clipPath: everything out of this area won't be drawn.
-    svg.append('defs').append('svg:clipPath')
-      .attr('id', 'clip')
-      .append('svg:rect')
-      .attr('width', width)
-      .attr('height', height)
-      .attr('x', 0)
-      .attr('y', 0);
-
-    // Create the scatter variable: where both the circles and the brush take place
-    const areaChart = svg.append('g').attr('clip-path', 'url(#clip)');
-
-    // Area generator
-    const area = d3.area()
-      .x(d => xScaler(d.data.dateObj))
-      .y0(d => yScaler(d[0]))
-      .y1(d => yScaler(d[1]));
-
-    let brush;
-    let idleTimeout;
-    const idled = () => { idleTimeout = null; };
-
-    const updateChart = () => {
-      const extent = d3.event.selection;
-
-      // If no selection, back to initial coordinate. Otherwise, update X axis domain
-      if (!extent) {
-        if (!idleTimeout) {
-          idleTimeout = setTimeout(idled, 350); // This allows to wait a little bit
-          return;
-        }
-        xScaler.domain(d3.extent(data, d => d.date));
-      } else {
-        xScaler.domain([xScaler.invert(extent[0]), xScaler.invert(extent[1])]);
-        areaChart.select('.brush').call(brush.move, null); // This remove the grey brush area as soon as the selection has been done
+    // If no selection, back to initial coordinate. Otherwise, update X axis domain
+    if (!extent) {
+      if (!idleTimeout) {
+        idleTimeout = setTimeout(idled, 350); // This allows to wait a little bit
+        return;
       }
+      xScaler.domain(d3.extent(data, d => d.date));
+    } else {
+      xScaler.domain([xScaler.invert(extent[0]), xScaler.invert(extent[1])]);
+      areaChart.select('.brush').call(brush.move, null); // This remove the grey brush area as soon as the selection has been done
+    }
 
-      // Update axis and area position
-      xAxis.transition().duration(1000).call(d3.axisBottom(xScaler).ticks(5));
-      areaChart.selectAll('path')
-        .transition().duration(1000)
-        .attr('d', area);
-    };
-
-    // Add brushing
-    brush = d3.brushX() // Add the brush feature using the d3.brush function
-      .extent([[0, 0], [width, height]]) // brush area: it means I select the whole graph area
-      .on('end', updateChart); // Each time the brush selection changes, trigger the 'updateChart' function
-
-    areaChart.selectAll('mylayers')
-      .data(stackedData)
-      .enter()
-      .append('path')
-      .attr('class', d => `langArea langArea-${cssSafe(d.key)}`)
-      .style('fill', d => color(d.index))
+    // Update axis and area position
+    xAxis.transition().duration(1000).call(d3.axisBottom(xScaler).ticks(5));
+    areaChart.selectAll('path')
+      .transition().duration(1000)
       .attr('d', area);
+  };
 
-    // Add the brushing
-    areaChart.append('g')
-      .attr('class', 'brush')
-      .call(brush);
+  // Add brushing
+  brush = d3.brushX() // Add the brush feature using the d3.brush function
+    .extent([[0, 0], [width, height]]) // brush area: it means I select the whole graph area
+    .on('end', updateChart); // Each time the brush selection changes, trigger the 'updateChart' function
 
-    // Legend
-    createLegend(langs, color);
-  }
-);
+  areaChart.selectAll('mylayers')
+    .data(stackedData)
+    .enter()
+    .append('path')
+    .attr('class', d => `langArea langArea-${cssSafe(d.key)}`)
+    .style('fill', d => color(d.index))
+    .attr('d', area);
+
+  // Add the brushing
+  areaChart.append('g')
+    .attr('class', 'brush')
+    .call(brush);
+
+  // Legend
+  createLegend({ color, groups, svg });
+};
+
+// eslint-disable-next-line promise/catch-or-return
+importCSVData().then(render);
