@@ -1,6 +1,7 @@
-/* global _, $, d3 */
+/* global _, $, d3, localStorage, window */
 
-const prefs = {
+const storedPrefs = localStorage.getItem('ghoot');
+const prefs = storedPrefs ? JSON.parse(storedPrefs) : {
   groupBy: 'language', // either 'language' or 'repo'
   colors: ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a', '#888888'],
   language: {
@@ -11,8 +12,11 @@ const prefs = {
   repo: {
   },
 };
+const savePrefs = () => {
+  localStorage.setItem('ghoot', JSON.stringify(prefs));
+};
 
-const importCSVData = () => new Promise((resolve) => { // eslint-disable-line promise/avoid-new
+const importedCSVData = new Promise((resolve) => { // eslint-disable-line promise/avoid-new
   d3.csv(
     // Input records are in this format:
     // { repo, date, language, files, lines }
@@ -35,8 +39,7 @@ const filterByPrefs = data => (_.filter(data, r => (
     && prefs.repo[r.repo] !== false
 )));
 
-// Find the top 10 languages by total line count (ignoring any languages that have been disabled in
-// the prefs) and group everything else as 'Other'.
+// Find the top 10 languages by total line count, and group everything else as 'Other'.
 const getTopLangs = data => ([
   ..._.map(_.slice(_.reverse(_.sortBy(
     _.flatMap(
@@ -84,9 +87,9 @@ const stackDataByGroup = (data, groups) => {
 const getDimensions = () => {
   const margin = {
     top: 75,
-    right: 230,
+    right: 220,
     bottom: 50,
-    left: 75,
+    left: 100,
   };
   const width = 1000 - margin.left - margin.right;
   const height = 500 - margin.top - margin.bottom;
@@ -144,7 +147,7 @@ const addClipPath = ({ height, svg, width }) => {
     .attr('y', 0);
 };
 
-const cssSafe = str => str.replace(/ /g, '-');
+const cssSafe = str => str.replace(/[ /]/g, '-');
 
 const highlight = (d) => {
   d3.selectAll('.langArea').style('opacity', 0.1);
@@ -154,8 +157,8 @@ const highlight = (d) => {
 const noHighLight = () => d3.selectAll('.langArea').style('opacity', 1);
 
 const createLegend = ({ color, groups, svg }) => {
-  const dotSize = 20;
-  const legendX = 730;
+  const dotSize = 15;
+  const legendX = 690;
   svg.selectAll('myrect')
     .data(groups)
     .enter()
@@ -164,9 +167,9 @@ const createLegend = ({ color, groups, svg }) => {
     .attr('y', (d, i) => 10 + (i * (dotSize + 5)))
     .attr('width', dotSize)
     .attr('height', dotSize)
-    .style('fill', (d, i) => color(i))
-    .on('mouseover', highlight)
-    .on('mouseout', noHighLight);
+    .style('fill', (d, i) => color(i));
+  // .on('mouseover', highlight)
+  // .on('mouseout', noHighLight);
   svg.selectAll('mylabels')
     .data(groups)
     .enter()
@@ -176,9 +179,9 @@ const createLegend = ({ color, groups, svg }) => {
     .style('fill', (d, i) => color(i))
     .text(d => d)
     .attr('text-anchor', 'left')
-    .style('alignment-baseline', 'middle')
-    .on('mouseover', highlight)
-    .on('mouseout', noHighLight);
+    .style('alignment-baseline', 'middle');
+  // .on('mouseover', highlight)
+  // .on('mouseout', noHighLight);
 };
 
 const render = (allData) => { // eslint-disable-line max-statements
@@ -255,5 +258,61 @@ const render = (allData) => { // eslint-disable-line max-statements
   createLegend({ color, groups, svg });
 };
 
+const populateFilterList = (allData) => {
+  // Store a boolean pref for each langauge and each repo
+  _.each(allData, ({ language, repo }) => {
+    if (!_.has(prefs.language, language)) {
+      prefs.language[language] = true;
+    }
+    if (!_.has(prefs.repo, repo)) {
+      prefs.repo[repo] = true;
+    }
+  });
+
+  // Create checkboxes to show the state of each pref
+  const filterList = $('.filterList');
+  const sortedLanguages = _.keys(prefs.language).sort();
+  _.each(sortedLanguages, (language) => {
+    const item = filterList.append('<div class="item"></div>');
+    item.append(`<input type="checkbox" name="lang:${cssSafe(language)}" value="${language}" ${prefs.language[language] ? 'checked="checked" ' : ''}/>`);
+    item.append(`<label for="lang:${cssSafe(language)}">${language}</label>`);
+  });
+  filterList.append('<hr />');
+  const sortedRepos = _.keys(prefs.repo).sort();
+  _.each(sortedRepos, (repo) => {
+    const item = filterList.append('<div class="item"></div>');
+    item.append(`<input type="checkbox" name="repo:${cssSafe(repo)}" value="${repo}" ${prefs.repo[repo] ? 'checked="checked" ' : ''}/>`);
+    item.append(`<label for="repo:${cssSafe(repo)}">${repo}</label>`);
+  });
+
+  // When the checkboxes are modified, update the prefs
+  filterList.click(async () => {
+    const checkboxes = $('.filterList input[type=checkbox]');
+    checkboxes.each(function () { // eslint-disable-line func-names
+      const checkbox = $(this);
+      const name = checkbox.attr('name');
+      const value = checkbox.attr('value');
+      const isChecked = !!checkbox.prop('checked');
+      if (_.startsWith(name, 'lang:')) {
+        prefs.language[value] = isChecked;
+      } else {
+        prefs.repo[value] = isChecked;
+      }
+    });
+    render(await importedCSVData);
+  });
+  return allData;
+};
+
 // eslint-disable-next-line promise/catch-or-return
-importCSVData().then(render);
+importedCSVData.then(populateFilterList).then(render);
+
+const checkSettings = async () => {
+  prefs.groupBy = $('input[name=groupBy]:checked').val();
+  render(await importedCSVData);
+};
+
+$('#groupByLanguage').click(checkSettings);
+$('#groupByRepo').click(checkSettings);
+
+$(window).on('beforeunload', savePrefs);
