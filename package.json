@@ -1,7 +1,7 @@
 {
   "name": "ghoot",
   "description": "Visualization of github org evolution over time",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "author": "Chris Campbell",
   "license": "MIT",
   "repository": {
@@ -18,7 +18,7 @@
     "glob": "^7.1.3",
     "isbinaryfile": "^4.0.0",
     "language-detect": "^1.1.0",
-    "lodash": "^4.17.11",
+    "lodash": "^4.17.15",
     "minimist": "^1.2.0",
     "rxjs": "^6.4.0"
   },
