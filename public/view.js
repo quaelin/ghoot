@@ -149,13 +149,6 @@ const addClipPath = ({ height, svg, width }) => {
 
 const cssSafe = str => str.replace(/[ /]/g, '-');
 
-const highlight = (d) => {
-  d3.selectAll('.langArea').style('opacity', 0.1);
-  d3.select(`.langArea-${cssSafe(d)}`).style('opacity', 1);
-};
-
-const noHighLight = () => d3.selectAll('.langArea').style('opacity', 1);
-
 const createLegend = ({ color, groups, svg }) => {
   const dotSize = 15;
   const legendX = 690;
