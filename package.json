@@ -1,7 +1,7 @@
 {
   "name": "ghoot",
   "description": "Visualization of github org evolution over time",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "author": "Chris Campbell",
   "license": "MIT",
   "repository": {
