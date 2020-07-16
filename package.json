@@ -19,7 +19,7 @@
     "isbinaryfile": "^4.0.0",
     "language-detect": "^1.1.0",
     "lodash": "^4.17.19",
-    "minimist": "^1.2.0",
+    "minimist": "^1.2.3",
     "rxjs": "^6.4.0"
   },
   "devDependencies": {
