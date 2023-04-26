@@ -26,11 +26,16 @@ const importedCSVData = new Promise((resolve) => { // eslint-disable-line promis
     r => ({
       ...r,
       dateObj: d3.timeParse('%Y-%m-%d')(r.date),
+      sortTime: (new Date(r.date)).getTime(),
       files: Number(r.files),
       lines: Number(r.lines),
     }),
 
-    resolve
+    // Sort the entire data set by date
+    data => resolve(data.sort((a, b) => {
+      if (a.sortTime < b.sortTime) return -1;
+      return 1;
+    }))
   );
 });
 
